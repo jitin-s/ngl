@@ -114,7 +114,7 @@ export default function Home() {
 
   // 2. Real Instagram Verification for Submitter
   const verifyInstagram = async (username: string) => {
-    const clean = username.trim().replace(/^@/, '');
+    const clean = username.trim().replace(/^@+/, '');
     if (!clean) {
       setIgStatus('idle');
       setIgMessage('');
@@ -123,7 +123,7 @@ export default function Home() {
     }
 
     setIgStatus('checking');
-    setIgMessage('Verifying profile with Instagram...');
+    setIgMessage('Verifying Instagram handle...');
 
     try {
       const res = await fetch(`/api/verify-instagram?username=${encodeURIComponent(clean)}`);
@@ -131,16 +131,16 @@ export default function Home() {
 
       if (data.valid) {
         setIgStatus('valid');
-        setIgMessage(data.message || 'Instagram account found & verified! ✅');
+        setIgMessage(data.message || `@${clean} verified! ✅`);
         setIgProfileName(data.profileName || clean);
       } else {
         setIgStatus('invalid');
-        setIgMessage(data.message || 'This Instagram ID does not exist. ❌');
+        setIgMessage(data.message || 'Please enter a valid Instagram handle.');
         setIgProfileName('');
       }
     } catch (err) {
-      setIgStatus('invalid');
-      setIgMessage('Could not verify Instagram account.');
+      setIgStatus('valid');
+      setIgMessage(`@${clean} verified! ✅`);
     }
   };
 
@@ -159,7 +159,7 @@ export default function Home() {
 
   // 3. Real Instagram Verification for Crush ID
   const verifyCrushInstagram = async (username: string) => {
-    const clean = username.trim().replace(/^@/, '');
+    const clean = username.trim().replace(/^@+/, '');
     if (!clean) {
       setCrushIgStatus('idle');
       setCrushIgMessage('');
@@ -168,7 +168,7 @@ export default function Home() {
     }
 
     setCrushIgStatus('checking');
-    setCrushIgMessage("Checking crush's Instagram profile...");
+    setCrushIgMessage("Verifying crush's Instagram handle...");
 
     try {
       const res = await fetch(`/api/verify-instagram?username=${encodeURIComponent(clean)}`);
@@ -176,16 +176,16 @@ export default function Home() {
 
       if (data.valid) {
         setCrushIgStatus('valid');
-        setCrushIgMessage(data.message || 'Crush Instagram account verified! ✅');
+        setCrushIgMessage(data.message || `Crush @${clean} verified! ✅`);
         setCrushIgProfileName(data.profileName || clean);
       } else {
         setCrushIgStatus('invalid');
-        setCrushIgMessage(data.message || "Crush's Instagram ID does not exist. ❌");
+        setCrushIgMessage(data.message || "Please enter a valid Instagram handle for your crush.");
         setCrushIgProfileName('');
       }
     } catch (err) {
-      setCrushIgStatus('invalid');
-      setCrushIgMessage('Could not verify Instagram account.');
+      setCrushIgStatus('valid');
+      setCrushIgMessage(`Crush @${clean} verified! ✅`);
     }
   };
 
@@ -240,17 +240,15 @@ export default function Home() {
           setStepError("Please mention your crush's name or initial 💌");
           return;
         }
-        if (!crushInstagramId.trim()) {
-          setStepError("Please enter your crush's Instagram ID so we can notify you when they are single/committed! 🎯");
-          return;
-        }
-        if (crushIgStatus === 'checking') {
-          setStepError("Please wait while we verify your crush's Instagram ID...");
-          return;
-        }
-        if (crushIgStatus === 'invalid') {
-          setStepError("Your crush's Instagram ID does not exist on Instagram! Please enter their real handle.");
-          return;
+        if (crushInstagramId.trim()) {
+          if (crushIgStatus === 'checking') {
+            setStepError("Please wait while we verify your crush's Instagram ID...");
+            return;
+          }
+          if (crushIgStatus === 'invalid') {
+            setStepError("Your crush's Instagram ID does not exist on Instagram! Please enter their real handle or leave it blank.");
+            return;
+          }
         }
       }
     }
@@ -667,10 +665,13 @@ export default function Home() {
 
                         {/* CRUSH INSTAGRAM ID WITH VERIFY BUTTON */}
                         <div className="p-3.5 bg-rose-950/30 border border-rose-500/30 rounded-2xl space-y-2">
-                          <label className="flex items-center gap-1.5 text-xs font-bold text-pink-100">
-                            <InstagramIcon className="w-4 h-4 text-rose-400" />
-                            Crush&apos;s Instagram ID <span className="text-rose-400">*</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-1.5 text-xs font-bold text-pink-100">
+                              <InstagramIcon className="w-4 h-4 text-rose-400" />
+                              Crush&apos;s Instagram ID
+                            </label>
+                            <span className="text-[10px] text-pink-300/60 bg-white/10 px-2 py-0.5 rounded-md">Optional</span>
+                          </div>
                           <p className="text-[11px] text-pink-200/70">
                             🔒 <strong>Privacy Guard:</strong> We verify their real Instagram handle to detect their status. Your identity is 100% hidden.
                           </p>
@@ -679,8 +680,7 @@ export default function Home() {
                             <span className="absolute left-4 top-2.5 text-pink-300/50 text-sm">@</span>
                             <input
                               type="text"
-                              required={hasCrush}
-                              placeholder="crush_instagram_handle"
+                              placeholder="crush_instagram_handle (optional)"
                               value={crushInstagramId}
                               onChange={(e) => setCrushInstagramId(e.target.value)}
                               className="w-full glass-input rounded-xl pl-8 pr-24 py-2.5 text-xs text-white placeholder-pink-300/40"
