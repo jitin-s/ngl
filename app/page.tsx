@@ -76,7 +76,7 @@ export default function Home() {
   
   // Notification State
   const [wantNotification, setWantNotification] = useState(true);
-  const [notificationChannel, setNotificationChannel] = useState<'whatsapp' | 'email'>('whatsapp');
+  const [notificationChannel, setNotificationChannel] = useState<'instagram' | 'whatsapp' | 'email'>('instagram');
   const [contactInfo, setContactInfo] = useState('');
 
   const [isConfidential, setIsConfidential] = useState(true);
@@ -259,7 +259,8 @@ export default function Home() {
         return;
       }
       if (wantNotification && !contactInfo.trim()) {
-        setStepError(`Please provide your ${notificationChannel === 'whatsapp' ? 'WhatsApp number' : 'email'} so we can alert you when your crush's status updates 🔔`);
+        const channelName = notificationChannel === 'instagram' ? 'Instagram ID' : notificationChannel === 'whatsapp' ? 'WhatsApp number' : 'email address';
+        setStepError(`Please provide your ${channelName} so we can alert you when your crush's status updates 🔔`);
         return;
       }
     }
@@ -820,7 +821,13 @@ export default function Home() {
 
                       <button
                         type="button"
-                        onClick={() => setWantNotification(!wantNotification)}
+                        onClick={() => {
+                          const next = !wantNotification;
+                          setWantNotification(next);
+                          if (next && notificationChannel === 'instagram' && !contactInfo.trim() && instagramId.trim()) {
+                            setContactInfo('@' + instagramId.trim().replace(/^@+/, ''));
+                          }
+                        }}
                         className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors duration-300 ${
                           wantNotification ? 'bg-rose-500' : 'bg-white/15'
                         }`}
@@ -841,14 +848,30 @@ export default function Home() {
                           exit={{ opacity: 0, height: 0 }}
                           className="pt-2 space-y-2.5"
                         >
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNotificationChannel('instagram');
+                                if (!contactInfo.trim() && instagramId.trim()) {
+                                  setContactInfo('@' + instagramId.trim().replace(/^@+/, ''));
+                                }
+                              }}
+                              className={`py-2 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all ${
+                                notificationChannel === 'instagram'
+                                  ? 'bg-gradient-to-r from-rose-500/40 to-pink-500/40 border-rose-400 text-rose-200 shadow-md'
+                                  : 'bg-white/5 border-white/10 text-pink-200/60 hover:bg-white/10'
+                              }`}
+                            >
+                              <InstagramIcon className="w-3.5 h-3.5" /> Instagram
+                            </button>
                             <button
                               type="button"
                               onClick={() => setNotificationChannel('whatsapp')}
-                              className={`py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 ${
+                              className={`py-2 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all ${
                                 notificationChannel === 'whatsapp'
-                                  ? 'bg-emerald-600/30 border-emerald-500/50 text-emerald-300'
-                                  : 'bg-white/5 border-white/10 text-pink-200/60'
+                                  ? 'bg-emerald-600/30 border-emerald-500/50 text-emerald-300 shadow-md'
+                                  : 'bg-white/5 border-white/10 text-pink-200/60 hover:bg-white/10'
                               }`}
                             >
                               💬 WhatsApp
@@ -856,27 +879,39 @@ export default function Home() {
                             <button
                               type="button"
                               onClick={() => setNotificationChannel('email')}
-                              className={`py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 ${
+                              className={`py-2 px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all ${
                                 notificationChannel === 'email'
-                                  ? 'bg-sky-600/30 border-sky-500/50 text-sky-300'
-                                  : 'bg-white/5 border-white/10 text-pink-200/60'
+                                  ? 'bg-sky-600/30 border-sky-500/50 text-sky-300 shadow-md'
+                                  : 'bg-white/5 border-white/10 text-pink-200/60 hover:bg-white/10'
                               }`}
                             >
                               <Mail className="w-3.5 h-3.5" /> Email
                             </button>
                           </div>
 
-                          <input
-                            type={notificationChannel === 'email' ? 'email' : 'tel'}
-                            placeholder={
-                              notificationChannel === 'whatsapp'
-                                ? 'Your WhatsApp number (for private alert)'
-                                : 'Your email address'
-                            }
-                            value={contactInfo}
-                            onChange={(e) => setContactInfo(e.target.value)}
-                            className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-white placeholder-pink-300/40"
-                          />
+                          <div className="relative">
+                            {notificationChannel === 'instagram' && (
+                              <span className="absolute left-3.5 top-2.5 text-pink-300/50 text-xs">@</span>
+                            )}
+                            <input
+                              type={notificationChannel === 'email' ? 'email' : 'text'}
+                              placeholder={
+                                notificationChannel === 'instagram'
+                                  ? 'your_instagram_handle (for secret DM alert)'
+                                  : notificationChannel === 'whatsapp'
+                                  ? 'Your WhatsApp number (with country code)'
+                                  : 'Your email address'
+                              }
+                              value={notificationChannel === 'instagram' ? contactInfo.replace(/^@+/, '') : contactInfo}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setContactInfo(notificationChannel === 'instagram' ? '@' + val.replace(/^@+/, '') : val);
+                              }}
+                              className={`w-full glass-input rounded-xl py-2.5 text-xs text-white placeholder-pink-300/40 ${
+                                notificationChannel === 'instagram' ? 'pl-8 pr-4' : 'px-4'
+                              }`}
+                            />
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>

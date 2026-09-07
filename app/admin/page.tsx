@@ -183,6 +183,11 @@ export default function AdminDashboard() {
     window.open(`https://wa.me/${contact}?text=${text}`, '_blank');
   };
 
+  const handleSendInstagramAlert = (item: any) => {
+    const handle = (item.contact_info || item.instagram_id || '').replace(/^@+/, '').trim();
+    window.open(`https://ig.me/m/${handle}`, '_blank');
+  };
+
   // Filter & Search Logic
   const filteredSubmissions = submissions
     .filter((item) => {
@@ -663,9 +668,18 @@ export default function AdminDashboard() {
                     {item.notification_channel === 'whatsapp' && item.contact_info && (
                       <button
                         onClick={() => handleSendWhatsAppAlert(item)}
-                        className="py-1 px-2 rounded-lg bg-emerald-500/30 hover:bg-emerald-500/50 border border-emerald-400/40 text-[10px] font-bold text-emerald-200 flex items-center gap-1 transition-all"
+                        className="py-1 px-2.5 rounded-lg bg-emerald-500/30 hover:bg-emerald-500/50 border border-emerald-400/40 text-[10px] font-bold text-emerald-200 flex items-center gap-1 transition-all"
                       >
                         <MessageCircle className="w-3 h-3" /> Ping WA
+                      </button>
+                    )}
+
+                    {item.notification_channel === 'instagram' && (item.contact_info || item.instagram_id) && (
+                      <button
+                        onClick={() => handleSendInstagramAlert(item)}
+                        className="py-1 px-2.5 rounded-lg bg-rose-500/30 hover:bg-rose-500/50 border border-rose-400/40 text-[10px] font-bold text-rose-200 flex items-center gap-1 transition-all"
+                      >
+                        <InstagramIcon className="w-3 h-3" /> DM on IG
                       </button>
                     )}
                   </div>
