@@ -1,32 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, sanitizeInstagramHandle } from '@/lib/security';
 
 export async function GET(req: NextRequest) {
+  // 1. IP-based Rate Limiting (25 requests / min)
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'anonymous-ip';
+  const rateCheck = checkRateLimit(`ip:${ip}:verify-ig`, 25, 60000);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { valid: false, message: `Too many requests. Please wait ${rateCheck.resetInSec}s.` },
+      { status: 429 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const rawInput = searchParams.get('username') || '';
   
-  // Clean handle: remove leading @, spaces, trailing slashes
-  const username = rawInput.trim().replace(/^@+/, '').replace(/\/+$/, '').toLowerCase();
+  // Strict sanitization
+  const username = sanitizeInstagramHandle(rawInput);
 
   if (!username) {
-    return NextResponse.json({ valid: false, message: 'Please enter an Instagram handle' }, { status: 400 });
-  }
-
-  // 1. Official Instagram Username Syntax Rules:
-  // - 1 to 30 characters
-  // - Letters (a-z), numbers (0-9), periods (.), and underscores (_)
-  // - Cannot start with a period (.)
-  // - Cannot end with a period (.)
-  // - Cannot contain consecutive periods (..)
-  const igRegex = /^(?!.*\.\.)(?!.*\.$)[a-z0-9_][a-z0-9_\.]{0,29}$/;
-  if (!igRegex.test(username)) {
-    return NextResponse.json({
-      valid: false,
-      message: 'Invalid format. Instagram handles can only use letters, numbers, periods, and underscores (1-30 chars, no trailing dot).',
-    });
+    return NextResponse.json(
+      {
+        valid: false,
+        message: 'Invalid handle syntax. Must be 1-30 characters (letters, numbers, periods, underscores).',
+      },
+      { status: 400 }
+    );
   }
 
   // 2. Reject obvious single-key spam or placeholders
-  const dummyList = ['test', 'dummy', 'asdf', 'qwerty', '12345', 'none', 'null', 'na', 'admin'];
+  const dummyList = ['test', 'dummy', 'asdf', 'qwerty', '12345', 'none', 'null', 'na', 'admin', 'root', 'localhost'];
   if (dummyList.includes(username) || /^([a-z0-9])\1{5,}$/.test(username)) {
     return NextResponse.json({
       valid: false,
