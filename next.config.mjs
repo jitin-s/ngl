@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  poweredByHeader: false, // Disables X-Powered-By: Next.js to prevent fingerprinting
+  poweredByHeader: false, // Disables X-Powered-By: Next.js to prevent fingerprinting''
   async headers() {
     return [
       {
