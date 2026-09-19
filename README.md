@@ -4,7 +4,7 @@ A romantic, high-performance web application designed to collect secret crushes,
 
 ---
 
-## 🚀 Features
+### 🚀 Features
 - 🎨 **Romantic Glassmorphism UI**: Ambient glowing gradients, floating hearts, smooth micro-interactions.
 - 💌 **Comprehensive Crush Form**:
   - Optional Instagram ID (@handle)
