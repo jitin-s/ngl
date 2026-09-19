@@ -20,7 +20,7 @@ A romantic, high-performance web application designed to collect secret crushes,
 
 ---
 
-## 🛠️ Local Development
+### 🛠️ Local Development
 
 ```bash
 npm run dev
