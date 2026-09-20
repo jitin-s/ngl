@@ -1,7 +1,7 @@
 {
-  "name": "romantic-crush-inquiry",
+  "name": "@jitin-s/nglcrush",
   "version": "0.1.0",
-  "private": true,
+  
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -29,5 +29,13 @@
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0"
+  },
+  "publishConfig": {
+  "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+  "type": "git",
+  "url": "git+https://github.com/jitin-s/ngl.git"
   }
+
 }
