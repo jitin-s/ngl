@@ -11,14 +11,78 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
           console.error('Auth callback error:', error);
+        } else if (session?.user) {
+          const user = session.user;
+          const email = (user.email || '').toLowerCase().trim();
+          const name = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || 'Dear Lover';
+          const cleanUsername = (user.user_metadata?.username || user.user_metadata?.preferred_username || email.split('@')[0] || 'user').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+          const nowIso = new Date().toISOString();
+
+          // Check if profile exists
+          let resolvedProfile: any = null;
+          try {
+            const { data: existingProfile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('email', email)
+              .maybeSingle();
+
+            if (existingProfile) {
+              resolvedProfile = existingProfile;
+              // Update last login & user_id
+              await supabase
+                .from('profiles')
+                .update({ user_id: user.id, last_sign_in_at: nowIso })
+                .eq('id', existingProfile.id);
+            } else {
+              // Create new profile record for Google User
+              const newProfileRecord = {
+                user_id: user.id,
+                email,
+                username: cleanUsername,
+                display_name: name,
+                created_at: nowIso,
+                last_sign_in_at: nowIso,
+              };
+
+              const { data: createdProfile } = await supabase
+                .from('profiles')
+                .insert([newProfileRecord])
+                .select()
+                .maybeSingle();
+
+              resolvedProfile = createdProfile || newProfileRecord;
+            }
+          } catch (profileErr) {
+            console.warn('Profile sync notice during OAuth callback:', profileErr);
+          }
+
+          // Save registered session to localStorage
+          const savedSession = {
+            id: resolvedProfile?.id || resolvedProfile?.user_id || user.id,
+            email,
+            username: resolvedProfile?.username || cleanUsername,
+            displayName: resolvedProfile?.display_name || name,
+            isGuest: false,
+            createdAt: resolvedProfile?.created_at || nowIso,
+          };
+
+          localStorage.setItem('vault_registered_session', JSON.stringify(savedSession));
+          localStorage.removeItem('vault_guest_session');
         }
       } catch (e) {
         console.error('Session retrieval error:', e);
       } finally {
-        router.push('/');
+        setTimeout(() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/';
+          } else {
+            router.push('/');
+          }
+        }, 400);
       }
     };
 

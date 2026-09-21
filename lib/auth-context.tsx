@@ -133,29 +133,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const getInitialSession = async () => {
       try {
-        // 1. Check active Supabase Auth session
+        // 1. Check active Supabase Auth session (Google OAuth or email session)
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setSupabaseUser(session.user);
-          // Try to sync with profiles table
+          const email = (session.user.email || '').toLowerCase().trim();
+          const fallbackName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0] || 'Dear Lover';
+          const fallbackUsername = (session.user.user_metadata?.username || session.user.user_metadata?.preferred_username || email.split('@')[0] || 'user').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+          const nowIso = new Date().toISOString();
+
+          // Sync with profiles table
           try {
             const { data: profile } = await supabase
               .from('profiles')
               .select('*')
-              .eq('email', session.user.email?.toLowerCase())
+              .eq('email', email)
               .maybeSingle();
 
             if (profile) {
-              setRegisteredUser({
-                id: profile.user_id || session.user.id,
+              const regUser: RegisteredUser = {
+                id: profile.user_id || profile.id || session.user.id,
                 email: profile.email,
-                username: profile.username,
-                displayName: profile.display_name || profile.username,
+                username: profile.username || fallbackUsername,
+                displayName: profile.display_name || fallbackName,
                 isGuest: false,
-                createdAt: profile.created_at,
-              });
+                createdAt: profile.created_at || nowIso,
+              };
+              setRegisteredUser(regUser);
+              localStorage.setItem('vault_registered_session', JSON.stringify(regUser));
+              localStorage.removeItem('vault_guest_session');
+            } else {
+              // Create profile entry for authenticated user (e.g. Google sign-in)
+              const newRecord: any = {
+                user_id: session.user.id,
+                email,
+                username: fallbackUsername,
+                display_name: fallbackName,
+                created_at: nowIso,
+                last_sign_in_at: nowIso,
+              };
+
+              const { data: createdProfile } = await supabase
+                .from('profiles')
+                .insert([newRecord])
+                .select()
+                .maybeSingle();
+
+              const regUser: RegisteredUser = {
+                id: createdProfile?.id || session.user.id,
+                email,
+                username: createdProfile?.username || fallbackUsername,
+                displayName: createdProfile?.display_name || fallbackName,
+                isGuest: false,
+                createdAt: nowIso,
+              };
+              setRegisteredUser(regUser);
+              localStorage.setItem('vault_registered_session', JSON.stringify(regUser));
+              localStorage.removeItem('vault_guest_session');
             }
-          } catch (e) {}
+          } catch (e) {
+            console.warn('Profile sync notice during initial session:', e);
+          }
         } else {
           // 2. Check for locally saved registered permanent user session
           const savedRegistered = localStorage.getItem('vault_registered_session');
@@ -221,12 +259,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     getInitialSession();
 
-    // Listen to Supabase auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Listen to Supabase auth state changes (e.g. after Google OAuth or magic link login)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setSupabaseUser(session.user);
         setGuestUser(null);
-      } else {
+
+        const email = (session.user.email || '').toLowerCase().trim();
+        const fallbackName = session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0] || 'Dear Lover';
+        const fallbackUsername = (session.user.user_metadata?.username || session.user.user_metadata?.preferred_username || email.split('@')[0] || 'user').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        const nowIso = new Date().toISOString();
+
+        try {
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (existingProfile) {
+            const regUser: RegisteredUser = {
+              id: existingProfile.user_id || existingProfile.id || session.user.id,
+              email: existingProfile.email,
+              username: existingProfile.username,
+              displayName: existingProfile.display_name || existingProfile.username,
+              isGuest: false,
+              createdAt: existingProfile.created_at,
+            };
+            setRegisteredUser(regUser);
+            localStorage.setItem('vault_registered_session', JSON.stringify(regUser));
+          } else {
+            // Auto create profile
+            const newRecord: any = {
+              user_id: session.user.id,
+              email,
+              username: fallbackUsername,
+              display_name: fallbackName,
+              created_at: nowIso,
+              last_sign_in_at: nowIso,
+            };
+
+            const { data: createdProfile } = await supabase
+              .from('profiles')
+              .insert([newRecord])
+              .select()
+              .maybeSingle();
+
+            const regUser: RegisteredUser = {
+              id: createdProfile?.id || session.user.id,
+              email,
+              username: createdProfile?.username || fallbackUsername,
+              displayName: createdProfile?.display_name || fallbackName,
+              isGuest: false,
+              createdAt: nowIso,
+            };
+            setRegisteredUser(regUser);
+            localStorage.setItem('vault_registered_session', JSON.stringify(regUser));
+          }
+        } catch (e) {
+          console.warn('OAuth state change profile notice:', e);
+        }
+      } else if (event === 'SIGNED_OUT') {
         setSupabaseUser(null);
       }
       setIsLoading(false);
@@ -426,7 +519,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const generatedUserId = 'user_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 
       // Attempt Supabase Auth signup
-      let authUserId = generatedUserId;
+      let authUserId: string | null = null;
       try {
         const { data: authData } = await supabase.auth.signUp({
           email: cleanEmail,
@@ -446,9 +539,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Supabase Auth signup notice (proceeding with profile creation):', e);
       }
 
+      const isValidUUID = (str?: string | null) => !!str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+      const validUserId = isValidUUID(authUserId) ? authUserId : null;
+
       // Insert record into public.profiles table
-      const profileRecord = {
-        user_id: authUserId,
+      const profileRecord: any = {
+        user_id: validUserId,
         email: cleanEmail,
         username: cleanUsername,
         display_name: cleanName,
@@ -457,18 +553,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         last_sign_in_at: nowIso,
       };
 
-      const { data: savedProfile, error: profileErr } = await supabase
+      let savedProfile: any = null;
+      const { data: primaryData, error: profileErr } = await supabase
         .from('profiles')
         .upsert([profileRecord], { onConflict: 'email' })
         .select()
         .maybeSingle();
 
       if (profileErr) {
-        console.warn('Profile table insert warning:', profileErr.message);
+        console.warn('Profile table insert warning, trying stripped fallback:', profileErr.message);
+        const { password_hash, ...strippedRecord } = profileRecord;
+        const { data: fallbackData } = await supabase
+          .from('profiles')
+          .upsert([strippedRecord], { onConflict: 'email' })
+          .select()
+          .maybeSingle();
+        savedProfile = fallbackData;
+      } else {
+        savedProfile = primaryData;
       }
 
       const newRegisteredUser: RegisteredUser = {
-        id: savedProfile?.id || savedProfile?.user_id || authUserId,
+        id: savedProfile?.id || savedProfile?.user_id || validUserId || `user_${Date.now()}`,
         email: cleanEmail,
         username: cleanUsername,
         displayName: cleanName,

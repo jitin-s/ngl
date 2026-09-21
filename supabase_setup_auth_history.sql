@@ -118,6 +118,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     last_sign_in_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Ensure columns exist if table was already created
+ALTER TABLE public.profiles 
+    ADD COLUMN IF NOT EXISTS user_id UUID,
+    ADD COLUMN IF NOT EXISTS password_hash TEXT,
+    ADD COLUMN IF NOT EXISTS display_name TEXT,
+    ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ DEFAULT now();
+
+-- Drop rigid FK constraints if present to prevent signup crashes
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_user_id_fkey;
+
 -- Enable RLS on profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
@@ -147,11 +157,18 @@ CREATE TABLE IF NOT EXISTS public.guest_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     guest_id TEXT UNIQUE NOT NULL,
     username TEXT NOT NULL,
-    temporary_pass TEXT NOT NULL,
+    temporary_pass TEXT,
+    session_token TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
     expires_at TIMESTAMPTZ DEFAULT (now() + INTERVAL '21 days'),
     ip_or_user_agent TEXT
 );
+
+-- Ensure columns exist if table was already created
+ALTER TABLE public.guest_sessions
+    ADD COLUMN IF NOT EXISTS temporary_pass TEXT,
+    ADD COLUMN IF NOT EXISTS session_token TEXT,
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (now() + INTERVAL '21 days');
 
 -- Enable RLS on guest_sessions
 ALTER TABLE public.guest_sessions ENABLE ROW LEVEL SECURITY;

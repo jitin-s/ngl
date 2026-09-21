@@ -51,34 +51,55 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     const passHash = password ? hashPasswordServer(password) : null;
     const nowIso = new Date().toISOString();
-    const generatedUserId = 'user_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+    const isValidUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-    let authUserId = generatedUserId;
+    let authUserId: string | null = null;
 
-    // 2. Attempt Supabase Auth creation
+    // 2. Attempt Supabase Auth creation & confirmation
     if (password) {
       try {
-        const { data: authData } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: password.trim(),
-          options: {
-            data: {
+        // Try creating confirmed user via admin API first
+        if (supabase.auth.admin) {
+          const { data: adminUser, error: adminErr } = await supabase.auth.admin.createUser({
+            email: cleanEmail,
+            password: password.trim(),
+            email_confirm: true,
+            user_metadata: {
               username: cleanUsername,
               display_name: username || cleanUsername,
             },
-          },
-        });
-        if (authData?.user?.id) {
-          authUserId = authData.user.id;
+          });
+
+          if (!adminErr && adminUser?.user?.id) {
+            authUserId = adminUser.user.id;
+          }
+        }
+
+        // Fallback to standard signUp if admin API wasn't used
+        if (!authUserId) {
+          const { data: authData } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password: password.trim(),
+            options: {
+              data: {
+                username: cleanUsername,
+                display_name: username || cleanUsername,
+              },
+            },
+          });
+          if (authData?.user?.id) {
+            authUserId = authData.user.id;
+          }
         }
       } catch (e) {
-        console.warn('Supabase Auth signup notice during OTP verification:', e);
+        console.warn('Supabase Auth user creation notice:', e);
       }
     }
 
-    // 3. Save / Upsert in public.profiles table
-    const profileRecord = {
-      user_id: authUserId,
+    // 3. Save / Upsert in public.profiles table (UUID and column safe)
+    const validUserId = authUserId && isValidUUID(authUserId) ? authUserId : null;
+    const profileRecord: any = {
+      user_id: validUserId,
       email: cleanEmail,
       username: cleanUsername,
       display_name: username || cleanUsername,
@@ -87,18 +108,32 @@ export async function POST(req: NextRequest) {
       last_sign_in_at: nowIso,
     };
 
-    const { data: savedProfile, error: profileErr } = await supabase
+    let savedProfile: any = null;
+    const { data: primaryData, error: profileErr } = await supabase
       .from('profiles')
       .upsert([profileRecord], { onConflict: 'email' })
       .select()
       .maybeSingle();
 
     if (profileErr) {
-      console.warn('Profile save warning:', profileErr.message);
+      console.warn('Profile primary upsert warning, trying fallback without password_hash:', profileErr.message);
+      // Retry without password_hash in case column is not present
+      const { password_hash, ...strippedRecord } = profileRecord;
+      const { data: fallbackData, error: fallbackErr } = await supabase
+        .from('profiles')
+        .upsert([strippedRecord], { onConflict: 'email' })
+        .select()
+        .maybeSingle();
+
+      if (!fallbackErr) {
+        savedProfile = fallbackData;
+      }
+    } else {
+      savedProfile = primaryData;
     }
 
     const user = {
-      id: savedProfile?.id || savedProfile?.user_id || authUserId,
+      id: savedProfile?.id || savedProfile?.user_id || validUserId || `user_${Date.now()}`,
       email: cleanEmail,
       username: cleanUsername,
       displayName: username || cleanUsername,
