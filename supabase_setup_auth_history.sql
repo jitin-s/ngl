@@ -106,7 +106,43 @@ AS $$
     LIMIT limit_count;
 $$;
 
--- 5. Create Guest Sessions Table to store temporary guest login credentials
+-- 5. Create Permanent User Profiles Table for Reliable Signup & Dual Login (Email or Username)
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID,
+    email TEXT UNIQUE NOT NULL,
+    username TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL,
+    password_hash TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    last_sign_in_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Enable RLS on profiles
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow profiles insert" ON public.profiles;
+CREATE POLICY "Allow profiles insert"
+    ON public.profiles
+    FOR INSERT
+    TO anon, authenticated
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow profiles select" ON public.profiles;
+CREATE POLICY "Allow profiles select"
+    ON public.profiles
+    FOR SELECT
+    TO anon, authenticated
+    USING (true);
+
+DROP POLICY IF EXISTS "Allow profiles update" ON public.profiles;
+CREATE POLICY "Allow profiles update"
+    ON public.profiles
+    FOR UPDATE
+    TO anon, authenticated
+    USING (true);
+
+-- 6. Create Guest Sessions Table to store temporary guest login credentials (3-Week Auto-Purge)
 CREATE TABLE IF NOT EXISTS public.guest_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     guest_id TEXT UNIQUE NOT NULL,
@@ -116,14 +152,6 @@ CREATE TABLE IF NOT EXISTS public.guest_sessions (
     expires_at TIMESTAMPTZ DEFAULT (now() + INTERVAL '21 days'),
     ip_or_user_agent TEXT
 );
-
--- Safely add columns if guest_sessions already exists
-ALTER TABLE public.guest_sessions
-    ADD COLUMN IF NOT EXISTS guest_id TEXT UNIQUE,
-    ADD COLUMN IF NOT EXISTS username TEXT,
-    ADD COLUMN IF NOT EXISTS temporary_pass TEXT,
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
-    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (now() + INTERVAL '21 days');
 
 -- Enable RLS on guest_sessions
 ALTER TABLE public.guest_sessions ENABLE ROW LEVEL SECURITY;
@@ -149,35 +177,16 @@ CREATE POLICY "Allow guest_sessions delete"
     TO anon, authenticated
     USING (true);
 
--- 6. SQL Function to automatically delete expired guest credentials & confessions older than 3 weeks (21 days)
-CREATE OR REPLACE FUNCTION public.cleanup_expired_guest_data()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-    -- Delete guest submissions older than 21 days
-    DELETE FROM public.crush_submissions
-    WHERE account_type = 'guest' 
-      AND (created_at < (now() - INTERVAL '21 days') 
-           OR guest_id IN (SELECT guest_id FROM public.guest_sessions WHERE expires_at < now()));
-
-    -- Delete expired guest sessions older than 21 days
-    DELETE FROM public.guest_sessions
-    WHERE expires_at < now() OR created_at < (now() - INTERVAL '21 days');
-END;
-$$;
-
--- 7. Database-Level Username Uniqueness & Fast Lookup Indexes
+-- 7. Database Indexes for Fast Lookup & Strict Uniqueness
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username_lower ON public.profiles (LOWER(username));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_email_lower ON public.profiles (LOWER(email));
 CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_sessions_username_unique ON public.guest_sessions (LOWER(username));
 CREATE INDEX IF NOT EXISTS idx_crush_submissions_user_id ON public.crush_submissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_crush_submissions_guest_id ON public.crush_submissions(guest_id);
-CREATE INDEX IF NOT EXISTS idx_crush_submissions_crush_organization ON public.crush_submissions(crush_organization);
 CREATE INDEX IF NOT EXISTS idx_crush_submissions_created_at ON public.crush_submissions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_guest_sessions_guest_id ON public.guest_sessions(guest_id);
-CREATE INDEX IF NOT EXISTS idx_guest_sessions_expires_at ON public.guest_sessions(expires_at);
 
--- 8. Stored Procedure for Global Username Uniqueness Verification (Guest & Registered)
+-- 8. Stored Procedure for Global Username Uniqueness Verification (Across Profiles, Guest Sessions & Auth)
 CREATE OR REPLACE FUNCTION public.check_username_availability(check_username TEXT, exclude_guest_id TEXT DEFAULT NULL)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -191,7 +200,15 @@ BEGIN
         RETURN false;
     END IF;
 
-    -- Check if active in guest_sessions table
+    -- 1. Check if taken in registered profiles
+    IF EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE LOWER(username) = clean_user
+    ) THEN
+        RETURN false;
+    END IF;
+
+    -- 2. Check if active in guest_sessions
     IF EXISTS (
         SELECT 1 FROM public.guest_sessions
         WHERE LOWER(username) = clean_user
@@ -201,7 +218,7 @@ BEGIN
         RETURN false;
     END IF;
 
-    -- Check if used in auth.users user_metadata
+    -- 3. Check in auth.users
     IF EXISTS (
         SELECT 1 FROM auth.users
         WHERE LOWER(COALESCE(raw_user_meta_data->>'display_name', '')) = clean_user

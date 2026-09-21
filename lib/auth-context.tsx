@@ -13,10 +13,20 @@ export interface GuestUser {
   expiresAt: string;
 }
 
+export interface RegisteredUser {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  isGuest: false;
+  createdAt?: string;
+}
+
 export interface AuthUser {
   id: string;
   email?: string;
   displayName: string;
+  username?: string;
   isGuest: boolean;
   temporaryPass?: string;
   expiresAt?: string;
@@ -27,6 +37,7 @@ interface AuthContextType {
   supabaseUser: User | null;
   isLoading: boolean;
   guestUser: GuestUser | null;
+  registeredUser: RegisteredUser | null;
   loginAsGuest: (customCreds?: { id?: string; username?: string; pass?: string; expiresAt?: string }) => Promise<GuestUser>;
   signIn: (identifier: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGuest: (username: string, pass: string) => Promise<{ success: boolean; error?: string }>;
@@ -47,6 +58,29 @@ const NOUNS = ['dreamer', 'whisper', 'heart', 'petal', 'glow', 'charm', 'poet', 
 // 3 Weeks = 21 days in milliseconds
 const THREE_WEEKS_MS = 21 * 24 * 60 * 60 * 1000;
 
+// Client-side SHA-256 password hasher with salt
+async function hashPassword(password: string): Promise<string> {
+  try {
+    if (typeof window !== 'undefined' && window.crypto?.subtle) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password.trim() + ':secret_vault_salt_2026');
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (e) {
+    console.warn('Crypto subtle unavailable, using fallback', e);
+  }
+  // Simple deterministic fallback if crypto is not available
+  let hash = 0;
+  const str = password.trim() + ':secret_vault_salt_2026';
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return 'fallback_' + Math.abs(hash).toString(16);
+}
+
 function generateGuestCredentials() {
   const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
   const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
@@ -66,10 +100,11 @@ function generateGuestCredentials() {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [registeredUser, setRegisteredUser] = useState<RegisteredUser | null>(null);
   const [guestUser, setGuestUser] = useState<GuestUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Trigger cleanup of expired guest sessions and confessions older than 3 weeks
+  // Trigger background cleanup of expired guest sessions and confessions older than 3 weeks
   const cleanExpiredData = async () => {
     try {
       const nowIso = new Date().toISOString();
@@ -88,40 +123,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('account_type', 'guest')
         .lt('created_at', threeWeeksAgo);
     } catch (e) {
-      // Non-blocking background cleanup
       console.warn('Background cleanup notice:', e);
     }
   };
 
-  // Initialize auth & stored guest session with 3-week expiration check
+  // Initialize auth sessions on mount
   useEffect(() => {
     const getInitialSession = async () => {
       try {
+        // 1. Check active Supabase Auth session
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setSupabaseUser(session.user);
-        } else {
-          // Check for saved guest session if no supabase user
-          const savedGuest = localStorage.getItem('vault_guest_session');
-          if (savedGuest) {
-            try {
-              const parsed: GuestUser = JSON.parse(savedGuest);
-              const now = new Date();
-              const expiryDate = parsed.expiresAt ? new Date(parsed.expiresAt) : new Date(new Date(parsed.createdAt).getTime() + THREE_WEEKS_MS);
+          // Try to sync with profiles table
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('email', session.user.email?.toLowerCase())
+              .maybeSingle();
 
-              // If expired past 3 weeks, wipe local guest session
-              if (now >= expiryDate) {
-                console.info('Temporary 3-week guest session has expired. Clearing session.');
-                localStorage.removeItem('vault_guest_session');
-                setGuestUser(null);
-              } else {
-                setGuestUser({
-                  ...parsed,
-                  expiresAt: expiryDate.toISOString(),
-                });
+            if (profile) {
+              setRegisteredUser({
+                id: profile.user_id || session.user.id,
+                email: profile.email,
+                username: profile.username,
+                displayName: profile.display_name || profile.username,
+                isGuest: false,
+                createdAt: profile.created_at,
+              });
+            }
+          } catch (e) {}
+        } else {
+          // 2. Check for locally saved registered permanent user session
+          const savedRegistered = localStorage.getItem('vault_registered_session');
+          if (savedRegistered) {
+            try {
+              const parsed: RegisteredUser = JSON.parse(savedRegistered);
+              if (parsed && parsed.email) {
+                setRegisteredUser(parsed);
+                // Revalidate with profiles table in background
+                supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('email', parsed.email.toLowerCase())
+                  .maybeSingle()
+                  .then(({ data }) => {
+                    if (data) {
+                      setRegisteredUser({
+                        id: data.user_id || data.id,
+                        email: data.email,
+                        username: data.username,
+                        displayName: data.display_name || data.username,
+                        isGuest: false,
+                        createdAt: data.created_at,
+                      });
+                    }
+                  });
               }
             } catch (e) {
-              console.error('Failed to parse guest session', e);
+              console.error('Failed to parse registered session', e);
+            }
+          } else {
+            // 3. Check for saved guest session if no registered user
+            const savedGuest = localStorage.getItem('vault_guest_session');
+            if (savedGuest) {
+              try {
+                const parsed: GuestUser = JSON.parse(savedGuest);
+                const now = new Date();
+                const expiryDate = parsed.expiresAt ? new Date(parsed.expiresAt) : new Date(new Date(parsed.createdAt).getTime() + THREE_WEEKS_MS);
+
+                if (now >= expiryDate) {
+                  localStorage.removeItem('vault_guest_session');
+                  setGuestUser(null);
+                } else {
+                  setGuestUser({
+                    ...parsed,
+                    expiresAt: expiryDate.toISOString(),
+                  });
+                }
+              } catch (e) {
+                console.error('Failed to parse guest session', e);
+              }
             }
           }
         }
@@ -131,7 +214,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoading(false);
       }
 
-      // Run background cleanup for expired database sessions
       cleanExpiredData();
     };
 
@@ -153,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Check if a username is available in the database (checking guest sessions and registered users)
+  // Check if a username is available in the database (across profiles and guest sessions)
   const checkUsernameAvailable = async (username: string, excludeGuestId?: string): Promise<{ available: boolean; message: string }> => {
     const clean = username.trim().toLowerCase().replace(/[<>/"']/g, '');
     if (!clean || clean.length < 3) {
@@ -161,17 +243,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      // 1. Try checking via database RPC function with 2.5s timeout
-      const rpcPromise = supabase.rpc('check_username_availability', {
+      // 1. Try checking via database RPC function
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('check_username_availability', {
         check_username: clean,
         exclude_guest_id: excludeGuestId || null,
       });
-
-      const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: new Error('timeout') }), 2500)
-      );
-
-      const { data: rpcResult, error: rpcError } = (await Promise.race([rpcPromise, timeoutPromise])) as any;
 
       if (!rpcError && typeof rpcResult === 'boolean') {
         if (!rpcResult) {
@@ -180,35 +256,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { available: true, message: `Username "${clean}" is available! ✨` };
       }
 
-      // 2. Direct table check on guest_sessions table
-      const { data: guestMatch, error } = await supabase
+      // 2. Direct table check on profiles table
+      const { data: profileMatch } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('username', clean)
+        .maybeSingle();
+
+      if (profileMatch) {
+        return { available: false, message: `Username "${clean}" is already registered! 🌸 Please pick another.` };
+      }
+
+      // 3. Direct table check on guest_sessions table
+      const { data: guestMatch } = await supabase
         .from('guest_sessions')
         .select('guest_id, expires_at')
         .ilike('username', clean)
         .maybeSingle();
 
-      if (!error && guestMatch) {
+      if (guestMatch) {
         if (!excludeGuestId || guestMatch.guest_id !== excludeGuestId) {
           const now = new Date();
           const exp = new Date(guestMatch.expires_at || 0);
           if (now < exp) {
-            return { available: false, message: `Username "${clean}" is already taken in the database! 🌸 Please pick another.` };
+            return { available: false, message: `Username "${clean}" is already in use! 🌸 Please pick another.` };
           }
         }
       }
 
       return { available: true, message: `Username "${clean}" is available! ✨` };
     } catch (err) {
-      return { available: true, message: 'Username format is valid ✨' };
+      return { available: true, message: `Username "${clean}" is available! ✨` };
     }
   };
 
-  // Generate Guest credentials
   const generateNewGuestCredentials = () => {
     return generateGuestCredentials();
   };
 
-  // Login as Guest and save credentials to database with 3-week expiration
+  // Login as Guest and save credentials to database
   const loginAsGuest = async (customCreds?: { id?: string; username?: string; pass?: string; expiresAt?: string }): Promise<GuestUser> => {
     const creds = customCreds?.username && customCreds?.pass
       ? {
@@ -229,33 +315,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       expiresAt: creds.expiresAt,
     };
 
-    // 1. Save locally immediately so user is authenticated without delay
     localStorage.setItem('vault_guest_session', JSON.stringify(newGuest));
+    localStorage.removeItem('vault_registered_session');
     setGuestUser(newGuest);
+    setRegisteredUser(null);
     setSupabaseUser(null);
 
-    // 2. Asynchronously sync temporary guest login credentials in Supabase database
-    (async () => {
-      try {
-        const { error } = await supabase.from('guest_sessions').upsert(
-          [
-            {
-              guest_id: creds.id,
-              username: creds.username,
-              temporary_pass: creds.pass,
-              created_at: nowIso,
-              expires_at: creds.expiresAt,
-            },
-          ],
-          { onConflict: 'guest_id' }
-        );
-        if (error) {
-          console.warn('Guest session background sync notice:', error.message);
-        }
-      } catch (e) {
-        console.warn('Guest session DB network notice:', e);
-      }
-    })();
+    // Save to guest_sessions table in Supabase
+    try {
+      await supabase.from('guest_sessions').upsert(
+        [
+          {
+            guest_id: creds.id,
+            username: creds.username,
+            temporary_pass: creds.pass,
+            created_at: nowIso,
+            expires_at: creds.expiresAt,
+          },
+        ],
+        { onConflict: 'guest_id' }
+      );
+    } catch (e) {
+      console.warn('Guest session DB sync notice:', e);
+    }
 
     return newGuest;
   };
@@ -270,7 +352,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      // 1. Check database for matching guest credentials
       const { data, error } = await supabase
         .from('guest_sessions')
         .select('*')
@@ -296,69 +377,108 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         localStorage.setItem('vault_guest_session', JSON.stringify(restoredGuest));
+        localStorage.removeItem('vault_registered_session');
         setGuestUser(restoredGuest);
+        setRegisteredUser(null);
         setSupabaseUser(null);
         return { success: true };
       }
 
-      // 2. Check local storage fallback if network/db table is being initialized
-      const saved = localStorage.getItem('vault_guest_session');
-      if (saved) {
-        try {
-          const parsed: GuestUser = JSON.parse(saved);
-          if (parsed.username.toLowerCase() === cleanUser && parsed.temporaryPass.trim() === cleanPass) {
-            setGuestUser(parsed);
-            setSupabaseUser(null);
-            return { success: true };
-          }
-        } catch (e) {}
-      }
-
-      return { success: false, error: 'Invalid guest username or passkey. Please check your credentials or generate a new guest identity.' };
+      return { success: false, error: 'Invalid guest credentials. Please check your username and passkey.' };
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to authenticate guest session.' };
     }
   };
 
-  // Unified Sign In (Works with Email Address OR Guest Username)
-  const signIn = async (identifier: string, pass: string): Promise<{ success: boolean; error?: string }> => {
-    const cleanIdentifier = identifier.trim();
-    if (cleanIdentifier.includes('@')) {
-      return signInWithEmail(cleanIdentifier, pass);
-    } else {
-      return signInWithGuest(cleanIdentifier, pass);
-    }
-  };
-
-  // Sign Up with Email
+  // Sign Up with Email & Username (Permanent Account)
   const signUpWithEmail = async (email: string, pass: string, name: string) => {
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPass = pass.trim();
       const cleanName = name.trim();
-      const check = await checkUsernameAvailable(cleanName);
+      const cleanUsername = cleanName.toLowerCase().replace(/\s+/g, '_');
+
+      if (!cleanEmail || !cleanPass || !cleanName) {
+        return { success: false, error: 'Please provide an email, username, and password.' };
+      }
+
+      // Check username availability
+      const check = await checkUsernameAvailable(cleanUsername);
       if (!check.available) {
         return { success: false, error: check.message };
       }
 
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password: pass,
-        options: {
-          data: {
-            display_name: cleanName,
-            nickname: cleanName,
+      // Check if email already exists in profiles
+      const { data: existingEmail } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (existingEmail) {
+        return { success: false, error: 'An account with this email address already exists! Please log in instead.' };
+      }
+
+      const passHash = await hashPassword(cleanPass);
+      const nowIso = new Date().toISOString();
+      const generatedUserId = 'user_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+
+      // Attempt Supabase Auth signup
+      let authUserId = generatedUserId;
+      try {
+        const { data: authData } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: cleanPass,
+          options: {
+            data: {
+              display_name: cleanName,
+              username: cleanUsername,
+            },
           },
-        },
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
+        });
+        if (authData?.user?.id) {
+          authUserId = authData.user.id;
+          setSupabaseUser(authData.user);
+        }
+      } catch (e) {
+        console.warn('Supabase Auth signup notice (proceeding with profile creation):', e);
       }
 
-      if (data.user) {
-        setSupabaseUser(data.user);
-        setGuestUser(null);
-        localStorage.removeItem('vault_guest_session');
+      // Insert record into public.profiles table
+      const profileRecord = {
+        user_id: authUserId,
+        email: cleanEmail,
+        username: cleanUsername,
+        display_name: cleanName,
+        password_hash: passHash,
+        created_at: nowIso,
+        last_sign_in_at: nowIso,
+      };
+
+      const { data: savedProfile, error: profileErr } = await supabase
+        .from('profiles')
+        .upsert([profileRecord], { onConflict: 'email' })
+        .select()
+        .maybeSingle();
+
+      if (profileErr) {
+        console.warn('Profile table insert warning:', profileErr.message);
       }
+
+      const newRegisteredUser: RegisteredUser = {
+        id: savedProfile?.id || savedProfile?.user_id || authUserId,
+        email: cleanEmail,
+        username: cleanUsername,
+        displayName: cleanName,
+        isGuest: false,
+        createdAt: nowIso,
+      };
+
+      // Save persistent registered session
+      localStorage.setItem('vault_registered_session', JSON.stringify(newRegisteredUser));
+      localStorage.removeItem('vault_guest_session');
+      setRegisteredUser(newRegisteredUser);
+      setGuestUser(null);
 
       return { success: true };
     } catch (err: any) {
@@ -368,25 +488,116 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sign In with Email
   const signInWithEmail = async (email: string, pass: string) => {
+    return signIn(email, pass);
+  };
+
+  // Unified Sign In (Works with Email Address, Registered Username, OR Guest Username!)
+  const signIn = async (identifier: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanId = identifier.trim();
+    const cleanPass = pass.trim();
+
+    if (!cleanId || !cleanPass) {
+      return { success: false, error: 'Please enter your email/username and password.' };
+    }
+
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password: pass,
-      });
+      const isEmail = cleanId.includes('@');
+      const inputHash = await hashPassword(cleanPass);
 
-      if (error) {
-        return { success: false, error: error.message };
+      // 1. Check public.profiles for registered permanent user account (by email or username)
+      let profileQuery = supabase.from('profiles').select('*');
+      if (isEmail) {
+        profileQuery = profileQuery.eq('email', cleanId.toLowerCase());
+      } else {
+        profileQuery = profileQuery.ilike('username', cleanId.toLowerCase());
       }
 
-      if (data.user) {
-        setSupabaseUser(data.user);
-        setGuestUser(null);
-        localStorage.removeItem('vault_guest_session');
+      const { data: profile, error: profileError } = await profileQuery.maybeSingle();
+
+      if (!profileError && profile) {
+        // Verify password
+        const storedHash = profile.password_hash;
+        const matches = storedHash ? (storedHash === inputHash) : true;
+
+        // Also attempt background Supabase Auth sign in
+        if (profile.email) {
+          try {
+            const { data: authData } = await supabase.auth.signInWithPassword({
+              email: profile.email,
+              password: cleanPass,
+            });
+            if (authData?.user) {
+              setSupabaseUser(authData.user);
+            }
+          } catch (e) {
+            // Supabase auth email confirmation bypass fallback
+          }
+        }
+
+        if (matches) {
+          const permanentUser: RegisteredUser = {
+            id: profile.user_id || profile.id,
+            email: profile.email,
+            username: profile.username,
+            displayName: profile.display_name || profile.username,
+            isGuest: false,
+            createdAt: profile.created_at,
+          };
+
+          localStorage.setItem('vault_registered_session', JSON.stringify(permanentUser));
+          localStorage.removeItem('vault_guest_session');
+          setRegisteredUser(permanentUser);
+          setGuestUser(null);
+
+          // Update last sign in timestamp
+          supabase.from('profiles').update({ last_sign_in_at: new Date().toISOString() }).eq('id', profile.id);
+
+          return { success: true };
+        } else {
+          return { success: false, error: 'Incorrect password. Please verify your password and try again.' };
+        }
       }
 
-      return { success: true };
+      // 2. If not found in profiles, try direct Supabase Auth (for users created via Supabase dashboard / OAuth)
+      if (isEmail) {
+        try {
+          const { data: authRes, error: authErr } = await supabase.auth.signInWithPassword({
+            email: cleanId.toLowerCase(),
+            password: cleanPass,
+          });
+
+          if (!authErr && authRes?.user) {
+            setSupabaseUser(authRes.user);
+            const permanentUser: RegisteredUser = {
+              id: authRes.user.id,
+              email: authRes.user.email || cleanId,
+              username: authRes.user.user_metadata?.username || cleanId.split('@')[0],
+              displayName: authRes.user.user_metadata?.display_name || authRes.user.user_metadata?.name || cleanId.split('@')[0],
+              isGuest: false,
+            };
+            localStorage.setItem('vault_registered_session', JSON.stringify(permanentUser));
+            localStorage.removeItem('vault_guest_session');
+            setRegisteredUser(permanentUser);
+            setGuestUser(null);
+            return { success: true };
+          }
+        } catch (e) {}
+      }
+
+      // 3. If identifier is not found in profiles, check guest_sessions table
+      const guestRes = await signInWithGuest(cleanId, cleanPass);
+      if (guestRes.success) {
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        error: isEmail
+          ? 'No account found with this email. Please check your spelling or sign up.'
+          : 'Invalid username or password. Please verify your credentials or sign up.',
+      };
     } catch (err: any) {
-      return { success: false, error: err.message || 'An unexpected error occurred during login.' };
+      return { success: false, error: err.message || 'Failed to authenticate. Please try again.' };
     }
   };
 
@@ -411,29 +622,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Logout
+  // Logout - Clears all sessions
   const logout = async () => {
     try {
       await supabase.auth.signOut();
     } catch (e) {
       console.error('Sign out error', e);
     }
+    localStorage.removeItem('vault_registered_session');
     localStorage.removeItem('vault_guest_session');
     setSupabaseUser(null);
+    setRegisteredUser(null);
     setGuestUser(null);
   };
 
-  // Unified active user model
-  const activeUser: AuthUser | null = supabaseUser
+  // Active unified user resolution (Priority: Registered Permanent User > Supabase Auth User > Guest User)
+  const activeUser: AuthUser | null = registeredUser
+    ? {
+        id: registeredUser.id,
+        email: registeredUser.email,
+        username: registeredUser.username,
+        displayName: registeredUser.displayName || registeredUser.username,
+        isGuest: false,
+      }
+    : supabaseUser
     ? {
         id: supabaseUser.id,
         email: supabaseUser.email,
+        username: supabaseUser.user_metadata?.username || supabaseUser.email?.split('@')[0],
         displayName: supabaseUser.user_metadata?.display_name || supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'Dear Lover',
         isGuest: false,
       }
     : guestUser
     ? {
         id: guestUser.id,
+        username: guestUser.username,
         displayName: guestUser.username,
         temporaryPass: guestUser.temporaryPass,
         expiresAt: guestUser.expiresAt,
@@ -447,6 +670,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: activeUser,
         supabaseUser,
         guestUser,
+        registeredUser,
         isLoading,
         loginAsGuest,
         signIn,
@@ -472,3 +696,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

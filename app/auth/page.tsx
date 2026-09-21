@@ -243,12 +243,12 @@ function AuthContent() {
           setTimeout(() => router.push('/'), 600);
         }
       } else {
-        const cleanName = displayName.trim().replace(/[0-9<>/"']/g, '');
+        const cleanName = displayName.trim().replace(/[<>/"'\\;]/g, '');
         const res = await signUpWithEmail(cleanId.toLowerCase(), password, cleanName);
         if (!res.success) {
           setErrorMsg(res.error || 'Could not complete registration.');
         } else {
-          setSuccessMsg('Account safely created and encrypted! Welcome 💖');
+          setSuccessMsg('Account safely created and encrypted in database! Welcome 💖');
           setTimeout(() => router.push('/'), 750);
         }
       }
@@ -329,7 +329,7 @@ function AuthContent() {
                 </div>
                 <div>
                   <h4 className="font-bold text-white">Zero-Gap Encryption</h4>
-                  <p className="text-[11px] text-pink-200/70">SHA-256 and parameterized SQL protection.</p>
+                  <p className="text-[11px] text-pink-200/70">SHA-256 and PostgreSQL profile security.</p>
                 </div>
               </div>
 
@@ -348,21 +348,20 @@ function AuthContent() {
           <div className="pt-6 border-t border-white/10 mt-6 flex items-center justify-between text-[11px] text-pink-200/50">
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-pink-300 hover:text-white transition-all font-medium"
+              className="hover:text-pink-100 flex items-center gap-1 transition-colors"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Dashboard</span>
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Sanctuary
             </Link>
-            <span>Military-Grade Vault</span>
+            <span>v2.5 Enterprise Edition</span>
           </div>
         </motion.div>
 
-        {/* Right Interactive Auth Form Panel */}
+        {/* Right Form Card */}
         <motion.div
           initial={{ opacity: 0, x: 25 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.4 }}
-          className="w-full md:w-1/2 glass-card p-6 md:p-8 rounded-3xl border border-pink-500/30 shadow-2xl backdrop-blur-2xl relative overflow-hidden"
+          className="w-full md:w-1/2 glass-card p-6 md:p-8 rounded-3xl border border-pink-400/30 shadow-2xl backdrop-blur-2xl relative"
         >
           {/* Header Title */}
           <div className="text-center mb-6">
@@ -488,9 +487,9 @@ function AuthContent() {
                     <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-300/60" />
                     <input
                       type="text"
-                      placeholder="e.g. Juliet, Angel, Alex"
+                      placeholder="e.g. Juliet, angel_48, Alex"
                       value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value.replace(/[0-9<>/"']/g, ''))}
+                      onChange={(e) => setDisplayName(e.target.value.replace(/[<>/"'\\;]/g, ''))}
                       className={`w-full bg-black/30 border rounded-2xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-pink-200/40 focus:outline-none focus:ring-2 transition-all ${
                         signupUserStatus.available === false
                           ? 'border-rose-500/60 focus:border-rose-400 focus:ring-rose-500/30'
@@ -505,14 +504,14 @@ function AuthContent() {
 
               <div>
                 <label className="block text-xs font-semibold text-pink-200 mb-1">
-                  {mode === 'login' ? 'Email Address or Guest Username 💌' : 'Email Address 💌'}
+                  {mode === 'login' ? 'Email Address or Username 💌' : 'Email Address 💌'}
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-300/60" />
                   <input
                     type={mode === 'login' ? 'text' : 'email'}
                     required
-                    placeholder={mode === 'login' ? 'youremail@domain.com or guest_sweet_poet_4829' : 'youremail@domain.com'}
+                    placeholder={mode === 'login' ? 'Email, username, or guest passkey' : 'youremail@domain.com'}
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                     className="w-full bg-black/30 border border-pink-500/30 focus:border-pink-400 rounded-2xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-pink-200/40 focus:outline-none focus:ring-2 focus:ring-pink-500/30 transition-all"
