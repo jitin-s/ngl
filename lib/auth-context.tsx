@@ -42,6 +42,8 @@ interface AuthContextType {
   signIn: (identifier: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGuest: (username: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signUpWithEmail: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string }>;
+  sendSignupOtp: (email: string, username: string) => Promise<{ success: boolean; token?: string; expiresAt?: number; previewOtp?: string; message?: string; error?: string }>;
+  verifySignupOtp: (email: string, pass: string, name: string, otp: string, token: string) => Promise<{ success: boolean; error?: string; user?: any }>;
   signInWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -486,6 +488,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Send 6-Digit Email OTP for Sign Up
+  const sendSignupOtp = async (email: string, username: string) => {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanUsername = username.trim().toLowerCase().replace(/\s+/g, '_');
+
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, username: cleanUsername }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to send verification code.' };
+      }
+
+      return {
+        success: true,
+        token: data.token,
+        expiresAt: data.expiresAt,
+        previewOtp: data.previewOtp,
+        message: data.message,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to send OTP.' };
+    }
+  };
+
+  // Verify 6-Digit Email OTP and Complete Account Registration
+  const verifySignupOtp = async (email: string, pass: string, name: string, otp: string, token: string) => {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPass = pass.trim();
+      const cleanName = name.trim();
+      const cleanUsername = cleanName.toLowerCase().replace(/\s+/g, '_');
+      const cleanOtp = otp.trim();
+
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password: cleanPass,
+          username: cleanUsername,
+          otp: cleanOtp,
+          token,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Invalid or expired verification code.' };
+      }
+
+      const verifiedUser: RegisteredUser = {
+        id: data.user.id,
+        email: data.user.email,
+        username: data.user.username,
+        displayName: data.user.displayName || cleanName,
+        isGuest: false,
+        createdAt: data.user.createdAt || new Date().toISOString(),
+      };
+
+      // Save persistent registered session
+      localStorage.setItem('vault_registered_session', JSON.stringify(verifiedUser));
+      localStorage.removeItem('vault_guest_session');
+      setRegisteredUser(verifiedUser);
+      setGuestUser(null);
+
+      return { success: true, user: verifiedUser };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'OTP verification failed.' };
+    }
+  };
+
   // Sign In with Email
   const signInWithEmail = async (email: string, pass: string) => {
     return signIn(email, pass);
@@ -676,6 +754,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signIn,
         signInWithGuest,
         signUpWithEmail,
+        sendSignupOtp,
+        verifySignupOtp,
         signInWithEmail,
         signInWithGoogle,
         logout,

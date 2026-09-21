@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -23,7 +23,11 @@ import {
   AlertCircle,
   Shield,
   CheckCircle2,
-  LockKeyhole
+  LockKeyhole,
+  RefreshCw,
+  Edit3,
+  MailCheck,
+  Send
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { FloatingHeartsBackground } from '@/components/FloatingHeartsBackground';
@@ -78,7 +82,9 @@ function AuthContent() {
     user, 
     signIn,
     signInWithEmail, 
-    signUpWithEmail, 
+    signUpWithEmail,
+    sendSignupOtp,
+    verifySignupOtp,
     signInWithGoogle, 
     loginAsGuest, 
     generateNewGuestCredentials,
@@ -95,6 +101,15 @@ function AuthContent() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // OTP Signup State
+  const [signupStep, setSignupStep] = useState<'form' | 'otp'>('form');
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [otpToken, setOtpToken] = useState('');
+  const [previewOtp, setPreviewOtp] = useState('');
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Live Database Username Availability State
   const [signupUserStatus, setSignupUserStatus] = useState<{ checking: boolean; available: boolean | null; message: string }>({
@@ -173,6 +188,15 @@ function AuthContent() {
     return () => clearTimeout(timer);
   }, [guestCredentials?.username, guestCredentials?.id, mode, checkUsernameAvailable]);
 
+  // Countdown Timer for OTP Resend
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCountdown(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCountdown]);
+
   const handleRegenerateGuest = () => {
     const fresh = generateNewGuestCredentials();
     setGuestCredentials(fresh);
@@ -214,6 +238,7 @@ function AuthContent() {
     }
   };
 
+  // Submit handler: Direct login OR Step 1 of OTP Signup
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -226,9 +251,19 @@ function AuthContent() {
       return;
     }
 
-    if (mode === 'signup' && !displayName.trim()) {
-      setErrorMsg('Please enter your name or nickname 🌸');
-      return;
+    if (mode === 'signup') {
+      if (!displayName.trim()) {
+        setErrorMsg('Please enter your name or nickname 🌸');
+        return;
+      }
+      if (!cleanId.includes('@')) {
+        setErrorMsg('Please enter a valid email address 💌');
+        return;
+      }
+      if (password.length < 6) {
+        setErrorMsg('Password must be at least 6 characters 🔒');
+        return;
+      }
     }
 
     setLoading(true);
@@ -243,19 +278,159 @@ function AuthContent() {
           setTimeout(() => router.push('/'), 600);
         }
       } else {
+        // Step 1: Send OTP to email
         const cleanName = displayName.trim().replace(/[<>/"'\\;]/g, '');
-        const res = await signUpWithEmail(cleanId.toLowerCase(), password, cleanName);
+        const res = await sendSignupOtp(cleanId.toLowerCase(), cleanName);
         if (!res.success) {
-          setErrorMsg(res.error || 'Could not complete registration.');
+          setErrorMsg(res.error || 'Could not send verification code.');
         } else {
-          setSuccessMsg('Account safely created and encrypted in database! Welcome 💖');
-          setTimeout(() => router.push('/'), 750);
+          setOtpToken(res.token || '');
+          setPreviewOtp(res.previewOtp || '');
+          setResendCountdown(60);
+          setSignupStep('otp');
+          setOtpDigits(['', '', '', '', '', '']);
+          setSuccessMsg(`A 6-digit verification code was sent to ${cleanId.toLowerCase()}! 💌`);
+          setTimeout(() => {
+            otpInputRefs.current[0]?.focus();
+          }, 200);
         }
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Resend OTP handler
+  const handleResendOtp = async () => {
+    if (resendCountdown > 0 || loading) return;
+    setErrorMsg('');
+    setSuccessMsg('');
+    setLoading(true);
+    try {
+      const cleanEmail = identifier.trim().toLowerCase();
+      const cleanName = displayName.trim();
+      const res = await sendSignupOtp(cleanEmail, cleanName);
+      if (!res.success) {
+        setErrorMsg(res.error || 'Failed to resend verification code.');
+      } else {
+        setOtpToken(res.token || '');
+        setPreviewOtp(res.previewOtp || '');
+        setResendCountdown(60);
+        setSuccessMsg(`Fresh 6-digit code sent to ${cleanEmail}! 💌`);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to resend verification code.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify OTP and complete registration
+  const handleVerifyOtp = async (codeOverride?: string) => {
+    const fullCode = codeOverride || otpDigits.join('');
+    if (fullCode.length !== 6) {
+      setErrorMsg('Please enter the complete 6-digit verification code 🔒');
+      return;
+    }
+
+    setErrorMsg('');
+    setSuccessMsg('');
+    setOtpLoading(true);
+
+    try {
+      const cleanEmail = identifier.trim().toLowerCase();
+      const cleanName = displayName.trim();
+      const res = await verifySignupOtp(
+        cleanEmail,
+        password,
+        cleanName,
+        fullCode,
+        otpToken
+      );
+
+      if (!res.success) {
+        setErrorMsg(res.error || 'Invalid or expired verification code.');
+      } else {
+        setSuccessMsg('Email verified & account securely encrypted! Welcome 💖✨');
+        setTimeout(() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/';
+          } else {
+            router.push('/');
+          }
+        }, 750);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'OTP verification failed.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // OTP digit input change handler
+  const handleOtpDigitChange = (index: number, value: string) => {
+    const cleanDigit = value.replace(/[^0-9]/g, '');
+    const newDigits = [...otpDigits];
+
+    if (cleanDigit.length > 1) {
+      // If user pasted into a single digit box
+      const pasted = cleanDigit.slice(0, 6);
+      for (let i = 0; i < 6; i++) {
+        newDigits[i] = pasted[i] || '';
+      }
+      setOtpDigits(newDigits);
+      if (pasted.length === 6) {
+        handleVerifyOtp(pasted);
+      } else {
+        const nextIdx = Math.min(pasted.length, 5);
+        otpInputRefs.current[nextIdx]?.focus();
+      }
+      return;
+    }
+
+    newDigits[index] = cleanDigit;
+    setOtpDigits(newDigits);
+
+    // Auto-advance to next input box
+    if (cleanDigit && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+
+    // If all 6 digits are filled, automatically trigger verification
+    if (cleanDigit && index === 5) {
+      const full = newDigits.join('');
+      if (full.length === 6) {
+        handleVerifyOtp(full);
+      }
+    }
+  };
+
+  // OTP backspace navigation handler
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  // OTP paste event handler
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/[^0-9]/g, '').slice(0, 6);
+    if (!pasted) return;
+
+    const newDigits = [...otpDigits];
+    for (let i = 0; i < 6; i++) {
+      newDigits[i] = pasted[i] || '';
+    }
+    setOtpDigits(newDigits);
+
+    if (pasted.length === 6) {
+      handleVerifyOtp(pasted);
+    } else {
+      const nextIdx = Math.min(pasted.length, 5);
+      otpInputRefs.current[nextIdx]?.focus();
     }
   };
 
@@ -397,7 +572,7 @@ function AuthContent() {
           <div className="grid grid-cols-3 gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/10 mb-6 text-xs">
             <button
               type="button"
-              onClick={() => { setMode('login'); setErrorMsg(''); setSuccessMsg(''); }}
+              onClick={() => { setMode('login'); setSignupStep('form'); setErrorMsg(''); setSuccessMsg(''); }}
               className={`py-2 px-1 rounded-xl font-bold transition-all text-center cursor-pointer ${
                 mode === 'login' 
                   ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-md' 
@@ -408,7 +583,7 @@ function AuthContent() {
             </button>
             <button
               type="button"
-              onClick={() => { setMode('signup'); setErrorMsg(''); setSuccessMsg(''); }}
+              onClick={() => { setMode('signup'); setSignupStep('form'); setErrorMsg(''); setSuccessMsg(''); }}
               className={`py-2 px-1 rounded-xl font-bold transition-all text-center cursor-pointer ${
                 mode === 'signup' 
                   ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-md' 
@@ -419,7 +594,7 @@ function AuthContent() {
             </button>
             <button
               type="button"
-              onClick={() => { setMode('guest'); setErrorMsg(''); setSuccessMsg(''); }}
+              onClick={() => { setMode('guest'); setSignupStep('form'); setErrorMsg(''); setSuccessMsg(''); }}
               className={`py-2 px-1 rounded-xl font-bold transition-all text-center cursor-pointer ${
                 mode === 'guest' 
                   ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-md' 
@@ -453,8 +628,128 @@ function AuthContent() {
             </motion.div>
           )}
 
-          {/* Login / Sign Up Form */}
-          {(mode === 'login' || mode === 'signup') && (
+          {/* OTP Verification Step for Sign Up */}
+          {mode === 'signup' && signupStep === 'otp' ? (
+            <div className="space-y-5">
+              {/* OTP Header Card */}
+              <div className="p-3.5 rounded-2xl bg-pink-500/15 border border-pink-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md shadow-pink-500/30 shrink-0">
+                    <MailCheck className="w-4 h-4" />
+                  </div>
+                  <div className="truncate">
+                    <h4 className="text-xs font-bold text-white">Verification Code Sent</h4>
+                    <p className="text-[11px] text-pink-200/80 font-mono truncate">
+                      {identifier}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignupStep('form');
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                  }}
+                  className="text-[11px] text-pink-300 hover:text-white flex items-center gap-1 bg-white/10 hover:bg-white/15 px-2.5 py-1.5 rounded-xl border border-white/10 transition-colors cursor-pointer shrink-0 ml-2"
+                >
+                  <Edit3 className="w-3 h-3" /> Edit
+                </button>
+              </div>
+
+              {/* Preview OTP helper (if available, ensures smooth testing in all environments) */}
+              {previewOtp && (
+                <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span>OTP Code: <strong className="font-mono tracking-widest text-white text-sm bg-black/40 px-2 py-0.5 rounded">{previewOtp}</strong></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const digits = previewOtp.split('');
+                      setOtpDigits(digits);
+                      handleVerifyOtp(previewOtp);
+                    }}
+                    className="text-[11px] font-bold underline text-amber-300 hover:text-white cursor-pointer"
+                  >
+                    Auto-Fill ✨
+                  </button>
+                </div>
+              )}
+
+              {/* 6 Digit Inputs */}
+              <div>
+                <label className="block text-xs font-semibold text-pink-200 mb-2.5 text-center">
+                  Enter 6-Digit Email Verification Code 💌
+                </label>
+                <div className="flex items-center justify-center gap-2 sm:gap-2.5">
+                  {otpDigits.map((digit, index) => (
+                    <input
+                      key={index}
+                      ref={(el) => { otpInputRefs.current[index] = el; }}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleOtpDigitChange(index, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                      onPaste={handleOtpPaste}
+                      className="w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold font-mono bg-black/40 border border-pink-500/40 focus:border-pink-300 focus:ring-2 focus:ring-pink-500/40 rounded-xl sm:rounded-2xl text-white outline-none transition-all shadow-inner"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Verify Button */}
+              <button
+                type="button"
+                onClick={() => handleVerifyOtp()}
+                disabled={otpLoading || otpDigits.join('').length !== 6}
+                className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:from-rose-600 hover:to-pink-700 text-white font-bold text-sm shadow-lg shadow-rose-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {otpLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Verifying & Encrypting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Verify OTP & Enter Vault 💖</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              {/* Resend Timer / Action */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSignupStep('form')}
+                  className="text-pink-300/80 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to details
+                </button>
+
+                {resendCountdown > 0 ? (
+                  <span className="text-pink-200/60 text-[11px]">
+                    Resend code in <strong className="text-pink-200 font-mono">{resendCountdown}s</strong>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={loading}
+                    className="text-pink-300 hover:text-white font-semibold flex items-center gap-1 transition-colors cursor-pointer text-xs"
+                  >
+                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    <span>Resend Code</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (mode === 'login' || mode === 'signup') && (
             <form onSubmit={handleAuthSubmit} className="space-y-4">
               {mode === 'signup' && (
                 <div>
@@ -572,7 +867,7 @@ function AuthContent() {
                   </>
                 ) : (
                   <>
-                    <span>{mode === 'login' ? 'Unlock My Vault 💕' : 'Create My Secret Account ✨'}</span>
+                    <span>{mode === 'login' ? 'Unlock My Vault 💕' : 'Send Verification Code 💌'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}

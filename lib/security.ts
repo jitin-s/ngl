@@ -155,3 +155,39 @@ export function verifyAdminSessionToken(token: string, ip: string): boolean {
   return timingSafeCompare(signature, expectedSig);
 }
 
+/**
+ * Cryptographic 6-Digit Email OTP Generator (HMAC-SHA256 Signed)
+ */
+export function generateEmailOtp(email: string): { otp: string; token: string; expiresAt: number } {
+  const cleanEmail = email.trim().toLowerCase();
+  const otp = String(crypto.randomInt(100000, 999999));
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
+  const payload = `${cleanEmail}:${expiresAt}`;
+  const secret = process.env.ADMIN_SECRET_KEY || 'secret123';
+  const signature = crypto.createHmac('sha256', secret).update(`${payload}:${otp}`).digest('hex');
+  return {
+    otp,
+    token: `${payload}:${signature}`,
+    expiresAt,
+  };
+}
+
+/**
+ * Validates 6-Digit Email OTP against signed HMAC token
+ */
+export function verifyEmailOtp(email: string, otp: string, token: string): boolean {
+  if (!email || !otp || !token || typeof token !== 'string') return false;
+  const parts = token.split(':');
+  if (parts.length !== 3) return false;
+
+  const [tokenEmail, expiresAtStr, signature] = parts;
+  const expiresAt = parseInt(expiresAtStr, 10);
+  if (isNaN(expiresAt) || Date.now() > expiresAt) return false;
+  if (tokenEmail.toLowerCase() !== email.trim().toLowerCase()) return false;
+
+  const secret = process.env.ADMIN_SECRET_KEY || 'secret123';
+  const expectedSig = crypto.createHmac('sha256', secret).update(`${tokenEmail}:${expiresAtStr}:${otp.trim()}`).digest('hex');
+  return timingSafeCompare(signature, expectedSig);
+}
+
+
