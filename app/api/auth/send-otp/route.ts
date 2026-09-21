@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { checkRateLimit, generateEmailOtp, sanitizeText } from '@/lib/security';
+import { sendOtpEmail } from '@/lib/email-service';
 
 function getSupabaseAdmin() {
   const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rxhbuidfsedbvkyellum.supabase.co';
@@ -66,7 +67,15 @@ export async function POST(req: NextRequest) {
     // 3. Generate cryptographic 6-digit OTP and HMAC signed token
     const { otp, token, expiresAt } = generateEmailOtp(cleanEmail);
 
-    // 4. Send email via Supabase Auth OTP service (if enabled)
+    // 4. Dispatch Email via Direct Mailer (if SMTP configured in .env.local)
+    let emailSent = false;
+    try {
+      emailSent = await sendOtpEmail(cleanEmail, username || cleanUsername, otp);
+    } catch (e) {
+      console.warn('Direct SMTP dispatch notice:', e);
+    }
+
+    // 5. Also dispatch via Supabase Auth OTP service (if Supabase SMTP configured)
     try {
       await supabase.auth.signInWithOtp({
         email: cleanEmail,
@@ -84,7 +93,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `A 6-digit verification code has been sent to ${cleanEmail}! Please check your inbox.`,
+      message: `A 6-digit verification code has been sent to ${cleanEmail}! Please check your inbox (and spam folder).`,
       token,
       expiresAt,
     });
