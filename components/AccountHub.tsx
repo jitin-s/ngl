@@ -27,7 +27,7 @@ export function AccountHub() {
 
   const handleCopyCredentials = () => {
     if (!user) return;
-    const text = `Secret Feelings Vault Credentials:\nIdentifier: ${user.displayName}\nPassword/Token: ${user.temporaryPass || 'Managed via Supabase Auth'}\nKeep this safe to access your confession history! 🌸`;
+    const text = `nglcrush Account Credentials:\nIdentifier: ${user.displayName}\nPassword/Token: ${user.temporaryPass || 'Managed via Supabase Auth'}\nKeep this safe to access your confession history! 🌸`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);

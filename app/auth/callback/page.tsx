@@ -93,11 +93,17 @@ export default function AuthCallbackPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#3b0824] via-[#1a0515] to-[#0d020a] text-white p-4">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="relative">
-          <Heart className="w-12 h-12 text-pink-400 animate-pulse" />
-          <Loader2 className="w-6 h-6 text-rose-300 animate-spin absolute -bottom-1 -right-1" />
+          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-xl shadow-pink-500/40 border border-pink-500/40 bg-black/60">
+            <img
+              src="/logo.jpg"
+              alt="nglcrush logo"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <Loader2 className="w-6 h-6 text-rose-300 animate-spin absolute -bottom-2 -right-2 bg-black/80 rounded-full p-0.5 border border-pink-500/30 shadow-md" />
         </div>
         <h2 className="text-xl font-bold bg-gradient-to-r from-pink-200 via-rose-300 to-amber-200 bg-clip-text text-transparent">
-          Signing you into Secret Feelings Vault...
+          Signing you into nglcrush...
         </h2>
         <p className="text-pink-200/70 text-sm">Please wait a tiny moment 🌸</p>
       </div>

@@ -207,7 +207,7 @@ function AuthContent() {
 
   const handleCopyGuest = () => {
     if (!guestCredentials) return;
-    const text = `Secret Feelings Vault Guest Credentials:\nUsername: ${guestCredentials.username}\nPassword: ${guestCredentials.pass}\nKeep this safe to track your secret confessions! 🌸`;
+    const text = `nglcrush Guest Credentials:\nUsername: ${guestCredentials.username}\nPassword: ${guestCredentials.pass}\nKeep this safe to track your secret confessions! 🌸`;
     navigator.clipboard.writeText(text);
     setCopiedCreds(true);
     setTimeout(() => setCopiedCreds(false), 2500);
@@ -478,12 +478,16 @@ function AuthContent() {
         >
           <div>
             <div className="flex items-center gap-2 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-400 via-pink-500 to-rose-500 flex items-center justify-center shadow-lg shadow-pink-500/30 border border-white/20">
-                <Heart className="w-6 h-6 text-white fill-white animate-gentle-heartbeat" />
+              <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-lg shadow-pink-500/30 border border-pink-500/30 bg-black/50 flex-shrink-0">
+                <img
+                  src="/logo.jpg"
+                  alt="nglcrush logo"
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div>
-                <h1 className="text-xl font-black bg-gradient-to-r from-pink-100 via-rose-200 to-amber-100 bg-clip-text text-transparent">
-                  Secret Feelings Vault
+                <h1 className="text-xl font-black bg-gradient-to-r from-pink-100 via-rose-200 to-amber-100 bg-clip-text text-transparent lowercase">
+                  nglcrush
                 </h1>
                 <span className="text-[11px] text-pink-200/60">
                   Zero-Gap Risk Protected

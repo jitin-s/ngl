@@ -67,20 +67,24 @@ export default function DashboardHome() {
             onClick={() => setActiveTab('overview')}
             className="flex items-center gap-2.5 cursor-pointer group"
           >
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-400 via-pink-500 to-rose-500 flex items-center justify-center shadow-lg shadow-pink-500/30 group-hover:scale-105 transition-all border border-white/20">
-              <Heart className="w-5 h-5 text-white fill-white animate-gentle-heartbeat" />
+            <div className="relative w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-pink-500/30 group-hover:scale-105 group-hover:shadow-pink-500/50 transition-all border border-pink-500/30 bg-black/50 flex-shrink-0">
+              <img
+                src="/logo.jpg"
+                alt="nglcrush logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h1 className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-pink-100 via-rose-200 to-amber-100 bg-clip-text text-transparent">
-                  Secret Feelings Vault
+                <h1 className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-pink-100 via-rose-200 to-amber-100 bg-clip-text text-transparent lowercase">
+                  nglcrush
                 </h1>
                 <span className="text-[10px] bg-pink-500/20 text-pink-300 px-2 py-0.5 rounded-full border border-pink-500/30 font-bold hidden sm:inline-block">
-                  Dashboard
+                  Vault
                 </span>
               </div>
               <p className="text-[10.5px] text-pink-200/60 hidden sm:block">
-                Encrypted Confession & Crush Sanctuary 🌸
+                Anonymous Confession & Crush Sanctuary 🌸
               </p>
             </div>
           </div>
@@ -284,7 +288,7 @@ export default function DashboardHome() {
         <p className="flex items-center justify-center gap-1.5 text-[11.5px]">
           Made with 💖 • Zero-Gap Risk Encryption • 100% Anonymous
         </p>
-        <p className="text-[10.5px] text-pink-300/40">© {new Date().getFullYear()} Secret Feelings Vault Dashboard</p>
+        <p className="text-[10.5px] text-pink-300/40">© {new Date().getFullYear()} nglcrush • All rights reserved</p>
       </footer>
     </main>
   );

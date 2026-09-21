@@ -1,4 +1,4 @@
-# 💕 Secret Feelings & Crush Confession Vault
+# 💕 nglcrush - Secret Feelings & Confession Vault
 
 A romantic, high-performance web application designed to collect secret crushes, relationship statuses, notifications, and confessions with 100% privacy control.
 

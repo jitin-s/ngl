@@ -39,12 +39,12 @@ export async function POST(req: NextRequest) {
     // Send a test email
     const testOtp = Math.floor(100000 + Math.random() * 900000).toString();
     const info = await transporter.sendMail({
-      from: `"Secret Feelings Vault 💖" <${fromAddress}>`,
+      from: `"nglcrush 💖" <${fromAddress}>`,
       to: targetEmail,
       subject: `🌸 Test OTP Verification Code: ${testOtp}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 500px; padding: 25px; background: #1a0215; color: white; border-radius: 16px;">
-          <h2 style="color: #fda4af;">Secret Feelings Vault ✨</h2>
+          <h2 style="color: #fda4af;">nglcrush ✨</h2>
           <p>This is a test verification email from Brevo SMTP!</p>
           <div style="font-size: 32px; font-weight: bold; letter-spacing: 6px; padding: 12px; background: #e11d48; color: white; display: inline-block; border-radius: 10px;">
             ${testOtp}

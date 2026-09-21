@@ -7,16 +7,16 @@ Your web application is already coded and ready for **Google One-Click Sign-In**
 ### Step 1: Create OAuth 2.0 Credentials in Google Cloud Console
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Select your project (or click **New Project** and name it `Secret Feelings Vault`).
+2. Select your project (or click **New Project** and name it `nglcrush`).
 3. In the left navigation, go to **APIs & Services** ➔ **OAuth consent screen**:
    - Choose **External** and click **Create**.
-   - Enter **App name** (e.g. `Secret Feelings Vault`).
+   - Enter **App name** (e.g. `nglcrush`).
    - Enter **User support email** and **Developer contact information**.
    - Click **Save and Continue** until finished.
 4. Go to **APIs & Services** ➔ **Credentials**:
    - Click **+ CREATE CREDENTIALS** ➔ **OAuth client ID**.
    - Application type: **Web application**.
-   - Name: `Secret Feelings Vault Web Client`.
+   - Name: `nglcrush Web Client`.
    - Under **Authorized JavaScript origins**, add:
      - `http://localhost:3000`
      - `https://your-vercel-domain.vercel.app`

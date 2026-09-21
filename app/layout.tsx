@@ -3,11 +3,25 @@ import './globals.css';
 import { AuthProvider } from '@/lib/auth-context';
 
 export const metadata: Metadata = {
-  title: 'Secret Feelings & Crush Confession Vault 💕',
-  description: 'A private and safe space to share your secret crush, relationship status, and confessions.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://nglcrush.vercel.app'),
+  title: 'nglcrush - Anonymous Crush & Confession Sanctuary 💕',
+  description: 'nglcrush - A private, safe, and anonymous space to share your secret crush, relationship status, and confessions.',
+  icons: {
+    icon: '/logo.jpg',
+    shortcut: '/logo.jpg',
+    apple: '/logo.jpg',
+  },
   openGraph: {
-    title: 'Secret Feelings & Crush Confession Vault 💕',
-    description: 'A private and safe space to share your secret crush, relationship status, and confessions.',
+    title: 'nglcrush - Anonymous Crush & Confession Sanctuary 💕',
+    description: 'nglcrush - A private, safe, and anonymous space to share your secret crush, relationship status, and confessions.',
+    images: [
+      {
+        url: '/logo.jpg',
+        width: 800,
+        height: 800,
+        alt: 'nglcrush Logo',
+      },
+    ],
   },
 };
 

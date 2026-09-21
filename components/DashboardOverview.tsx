@@ -152,7 +152,7 @@ export function DashboardOverview({
 
   const handleWhatsAppShare = () => {
     if (typeof window !== 'undefined') {
-      const text = encodeURIComponent(`Hey! Drop your secret crush or confession anonymously in my Secret Feelings Box 💕✨: ${window.location.origin}`);
+      const text = encodeURIComponent(`Hey! Drop your secret crush or confession anonymously on nglcrush 💕✨: ${window.location.origin}`);
       window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
     }
   };
