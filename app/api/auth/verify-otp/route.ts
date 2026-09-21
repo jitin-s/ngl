@@ -42,18 +42,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please provide email, verification code, and token.' }, { status: 400 });
     }
 
-    // 1. Verify 6-digit OTP with cryptographic HMAC verification
-    const isValidOtp = verifyEmailOtp(cleanEmail, cleanOtp, token);
-    if (!isValidOtp) {
-      return NextResponse.json({ error: 'Invalid or expired verification code. Please check the 6-digit code or request a new one.' }, { status: 400 });
+    // 1. Verify OTP with cryptographic HMAC verification OR Supabase Auth verifyOtp (all types)
+    const supabase = getSupabaseAdmin();
+    let isOtpValid = verifyEmailOtp(cleanEmail, cleanOtp, token);
+    let authUserId: string | null = null;
+
+    if (!isOtpValid) {
+      const otpTypes: ('signup' | 'email' | 'magiclink' | 'invite' | 'recovery')[] = ['signup', 'email', 'magiclink', 'invite', 'recovery'];
+      for (const otpType of otpTypes) {
+        try {
+          const { data: authVerify, error: verifyErr } = await supabase.auth.verifyOtp({
+            email: cleanEmail,
+            token: cleanOtp,
+            type: otpType,
+          });
+          if (!verifyErr && authVerify?.user) {
+            isOtpValid = true;
+            authUserId = authVerify.user.id;
+            break;
+          }
+        } catch (e) {
+          // Continue trying other types
+        }
+      }
     }
 
-    const supabase = getSupabaseAdmin();
+    if (!isOtpValid) {
+      return NextResponse.json({ 
+        error: 'Invalid or expired verification code. Please check the code in your email (or click Resend Code for a fresh one).' 
+      }, { status: 400 });
+    }
+
     const passHash = password ? hashPasswordServer(password) : null;
     const nowIso = new Date().toISOString();
     const isValidUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-
-    let authUserId: string | null = null;
 
     // 2. Attempt Supabase Auth creation & confirmation
     if (password) {

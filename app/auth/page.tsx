@@ -104,6 +104,7 @@ function AuthContent() {
 
   // OTP Signup State
   const [signupStep, setSignupStep] = useState<'form' | 'otp'>('form');
+  const [otpLength, setOtpLength] = useState<number>(6);
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [otpToken, setOtpToken] = useState('');
   const [resendCountdown, setResendCountdown] = useState(0);
@@ -324,11 +325,11 @@ function AuthContent() {
     }
   };
 
-  // Verify OTP and complete registration
+  // Verify OTP and complete registration (Supports both 6-digit and 8-digit OTPs)
   const handleVerifyOtp = async (codeOverride?: string) => {
-    const fullCode = codeOverride || otpDigits.join('');
-    if (fullCode.length !== 6) {
-      setErrorMsg('Please enter the complete 6-digit verification code 🔒');
+    const fullCode = (codeOverride || otpDigits.join('')).trim();
+    if (fullCode.length < 6) {
+      setErrorMsg(`Please enter the complete ${otpLength}-digit verification code 🔒`);
       return;
     }
 
@@ -369,36 +370,39 @@ function AuthContent() {
   // OTP digit input change handler
   const handleOtpDigitChange = (index: number, value: string) => {
     const cleanDigit = value.replace(/[^0-9]/g, '');
-    const newDigits = [...otpDigits];
 
     if (cleanDigit.length > 1) {
       // If user pasted into a single digit box
-      const pasted = cleanDigit.slice(0, 6);
-      for (let i = 0; i < 6; i++) {
+      const targetLen = cleanDigit.length >= 8 ? 8 : 6;
+      setOtpLength(targetLen);
+      const pasted = cleanDigit.slice(0, targetLen);
+      const newDigits = new Array(targetLen).fill('');
+      for (let i = 0; i < targetLen; i++) {
         newDigits[i] = pasted[i] || '';
       }
       setOtpDigits(newDigits);
-      if (pasted.length === 6) {
+      if (pasted.length === targetLen) {
         handleVerifyOtp(pasted);
       } else {
-        const nextIdx = Math.min(pasted.length, 5);
+        const nextIdx = Math.min(pasted.length, targetLen - 1);
         otpInputRefs.current[nextIdx]?.focus();
       }
       return;
     }
 
+    const newDigits = [...otpDigits];
     newDigits[index] = cleanDigit;
     setOtpDigits(newDigits);
 
     // Auto-advance to next input box
-    if (cleanDigit && index < 5) {
+    if (cleanDigit && index < otpLength - 1) {
       otpInputRefs.current[index + 1]?.focus();
     }
 
-    // If all 6 digits are filled, automatically trigger verification
-    if (cleanDigit && index === 5) {
+    // If all digits are filled, automatically trigger verification
+    if (cleanDigit && index === otpLength - 1) {
       const full = newDigits.join('');
-      if (full.length === 6) {
+      if (full.length === otpLength) {
         handleVerifyOtp(full);
       }
     }
@@ -414,19 +418,22 @@ function AuthContent() {
   // OTP paste event handler
   const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/[^0-9]/g, '').slice(0, 6);
-    if (!pasted) return;
+    const rawPasted = e.clipboardData.getData('text').replace(/[^0-9]/g, '');
+    if (!rawPasted) return;
 
-    const newDigits = [...otpDigits];
-    for (let i = 0; i < 6; i++) {
+    const targetLen = rawPasted.length >= 8 ? 8 : 6;
+    setOtpLength(targetLen);
+    const pasted = rawPasted.slice(0, targetLen);
+    const newDigits = new Array(targetLen).fill('');
+    for (let i = 0; i < targetLen; i++) {
       newDigits[i] = pasted[i] || '';
     }
     setOtpDigits(newDigits);
 
-    if (pasted.length === 6) {
+    if (pasted.length === targetLen) {
       handleVerifyOtp(pasted);
     } else {
-      const nextIdx = Math.min(pasted.length, 5);
+      const nextIdx = Math.min(pasted.length, targetLen - 1);
       otpInputRefs.current[nextIdx]?.focus();
     }
   };
@@ -655,19 +662,34 @@ function AuthContent() {
               </div>
 
               {/* Email Delivery Info Note */}
-              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-pink-200/80 flex items-center gap-2.5">
-                <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
-                <p className="leading-relaxed">
-                  Please check your inbox or spam folder for your 6-digit confirmation code.
-                </p>
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-pink-200/80 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
+                  <p className="leading-relaxed">
+                    Check your email inbox or spam folder for your confirmation code.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newLen = otpLength === 6 ? 8 : 6;
+                    setOtpLength(newLen);
+                    const newArr = new Array(newLen).fill('');
+                    for (let i = 0; i < newLen; i++) newArr[i] = otpDigits[i] || '';
+                    setOtpDigits(newArr);
+                  }}
+                  className="text-[11px] text-pink-300 hover:text-white underline shrink-0 ml-2 cursor-pointer font-medium"
+                >
+                  {otpLength === 6 ? 'Have 8 digits?' : 'Have 6 digits?'}
+                </button>
               </div>
 
-              {/* 6 Digit Inputs */}
+              {/* Digit Inputs */}
               <div>
                 <label className="block text-xs font-semibold text-pink-200 mb-2.5 text-center">
-                  Enter 6-Digit Email Verification Code 💌
+                  Enter {otpLength}-Digit Verification Code 💌
                 </label>
-                <div className="flex items-center justify-center gap-2 sm:gap-2.5">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap">
                   {otpDigits.map((digit, index) => (
                     <input
                       key={index}
@@ -680,7 +702,7 @@ function AuthContent() {
                       onChange={(e) => handleOtpDigitChange(index, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(index, e)}
                       onPaste={handleOtpPaste}
-                      className="w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold font-mono bg-black/40 border border-pink-500/40 focus:border-pink-300 focus:ring-2 focus:ring-pink-500/40 rounded-xl sm:rounded-2xl text-white outline-none transition-all shadow-inner"
+                      className="w-9 h-11 sm:w-11 sm:h-13 text-center text-lg sm:text-xl font-bold font-mono bg-black/40 border border-pink-500/40 focus:border-pink-300 focus:ring-2 focus:ring-pink-500/40 rounded-xl sm:rounded-2xl text-white outline-none transition-all shadow-inner"
                     />
                   ))}
                 </div>
@@ -690,7 +712,7 @@ function AuthContent() {
               <button
                 type="button"
                 onClick={() => handleVerifyOtp()}
-                disabled={otpLoading || otpDigits.join('').length !== 6}
+                disabled={otpLoading || otpDigits.filter(d => d.length > 0).length < 6}
                 className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:from-rose-600 hover:to-pink-700 text-white font-bold text-sm shadow-lg shadow-rose-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               >
                 {otpLoading ? (
