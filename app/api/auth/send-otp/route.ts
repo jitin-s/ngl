@@ -84,11 +84,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `6-Digit verification code generated for ${cleanEmail}!`,
+      message: `A 6-digit verification code has been sent to ${cleanEmail}! Please check your inbox.`,
       token,
       expiresAt,
-      // Provide preview OTP code to ensure instant verification works in all environments
-      previewOtp: otp,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to send verification code.' }, { status: 500 });

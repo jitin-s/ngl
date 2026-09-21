@@ -42,7 +42,7 @@ interface AuthContextType {
   signIn: (identifier: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGuest: (username: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signUpWithEmail: (email: string, pass: string, name: string) => Promise<{ success: boolean; error?: string }>;
-  sendSignupOtp: (email: string, username: string) => Promise<{ success: boolean; token?: string; expiresAt?: number; previewOtp?: string; message?: string; error?: string }>;
+  sendSignupOtp: (email: string, username: string) => Promise<{ success: boolean; token?: string; expiresAt?: number; message?: string; error?: string }>;
   verifySignupOtp: (email: string, pass: string, name: string, otp: string, token: string) => Promise<{ success: boolean; error?: string; user?: any }>;
   signInWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
@@ -615,7 +615,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         success: true,
         token: data.token,
         expiresAt: data.expiresAt,
-        previewOtp: data.previewOtp,
         message: data.message,
       };
     } catch (err: any) {

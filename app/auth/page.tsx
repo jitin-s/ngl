@@ -106,7 +106,6 @@ function AuthContent() {
   const [signupStep, setSignupStep] = useState<'form' | 'otp'>('form');
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [otpToken, setOtpToken] = useState('');
-  const [previewOtp, setPreviewOtp] = useState('');
   const [resendCountdown, setResendCountdown] = useState(0);
   const [otpLoading, setOtpLoading] = useState(false);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -285,7 +284,6 @@ function AuthContent() {
           setErrorMsg(res.error || 'Could not send verification code.');
         } else {
           setOtpToken(res.token || '');
-          setPreviewOtp(res.previewOtp || '');
           setResendCountdown(60);
           setSignupStep('otp');
           setOtpDigits(['', '', '', '', '', '']);
@@ -316,7 +314,6 @@ function AuthContent() {
         setErrorMsg(res.error || 'Failed to resend verification code.');
       } else {
         setOtpToken(res.token || '');
-        setPreviewOtp(res.previewOtp || '');
         setResendCountdown(60);
         setSuccessMsg(`Fresh 6-digit code sent to ${cleanEmail}! 💌`);
       }
@@ -657,26 +654,13 @@ function AuthContent() {
                 </button>
               </div>
 
-              {/* Preview OTP helper (if available, ensures smooth testing in all environments) */}
-              {previewOtp && (
-                <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
-                    <span>OTP Code: <strong className="font-mono tracking-widest text-white text-sm bg-black/40 px-2 py-0.5 rounded">{previewOtp}</strong></span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const digits = previewOtp.split('');
-                      setOtpDigits(digits);
-                      handleVerifyOtp(previewOtp);
-                    }}
-                    className="text-[11px] font-bold underline text-amber-300 hover:text-white cursor-pointer"
-                  >
-                    Auto-Fill ✨
-                  </button>
-                </div>
-              )}
+              {/* Email Delivery Info Note */}
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-pink-200/80 flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
+                <p className="leading-relaxed">
+                  Please check your inbox or spam folder for your 6-digit confirmation code.
+                </p>
+              </div>
 
               {/* 6 Digit Inputs */}
               <div>
