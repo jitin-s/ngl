@@ -18,7 +18,7 @@ A romantic, high-performance web application designed to collect secret crushes,
 - 🗝️ **Owner Admin Dashboard** (`/admin`): Search, filter, and review all incoming responses.
 - ⚡ **Supabase PostgreSQL Database** integration.
 
----
+----
 
 ### 🛠️ Local Development
 
