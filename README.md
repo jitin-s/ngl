@@ -31,7 +31,7 @@ Visit [http://localhost:3000/admin](http://localhost:3000/admin) to access the o
 
 ---
 
-## 🌐 Deploy to Vercel
+#### 🌐 Deploy to Vercel
 
 1. Push your repository to GitHub:
    ```bash
