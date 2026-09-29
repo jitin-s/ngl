@@ -29,7 +29,7 @@ npm run dev
 Visit [http://localhost:3000](http://localhost:3000) for the main confession form.
 Visit [http://localhost:3000/admin](http://localhost:3000/admin) to access the owner vault dashboard.
 
----
+----
 
 #### Deploy to Vercel
 
