@@ -2,7 +2,7 @@
 
 Your web application is already coded and ready for **Google One-Click Sign-In**! To enable it with your own Google credentials, follow these 3 simple steps:
 
----
+----
 
 ### Step 1: Create OAuth 2.0 Credentials in Google Cloud Console
 
